@@ -1,5 +1,6 @@
 import { Model } from "#s/model";
 import { LoadedModel } from "#t/loaded-model";
+import { modelEnabled } from "./metrics.ts";
 
 export class ModelManager {
 	private readonly models = new Map<string, LoadedModel>();
@@ -10,6 +11,7 @@ export class ModelManager {
 				...model,
 				enabled: true,
 			});
+			modelEnabled.set({ model: id }, 1);
 		}
 	}
 
@@ -23,6 +25,7 @@ export class ModelManager {
 			throw new Error("Model doesn't exist");
 		}
 		model.enabled = enabled;
+		modelEnabled.set({ model: id }, enabled ? 1 : 0);
 		if (enabled) {
 			console.log(`Enabled model "${id}".`);
 		} else {

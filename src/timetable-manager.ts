@@ -1,6 +1,7 @@
 import { CronEvent } from "#s/cron-event";
 import { Cron } from "croner";
 import { EventManager } from "./event-manager.ts";
+import { timetableEventErrorsTotal } from "./metrics.ts";
 
 export class TimetableManager {
 	private readonly jobs = new Map<CronEvent, Cron>();
@@ -17,6 +18,9 @@ export class TimetableManager {
 				cronEvent.cron,
 				{
 					catch: (e) => {
+						timetableEventErrorsTotal.inc({
+							type: cronEvent.event.type,
+						});
 						console.error(
 							`Timetable event "${cronEvent.event.type}" failed:`,
 							e

@@ -3,4 +3,5 @@ export interface UpstreamFailure {
 	contentType: string;
 	body: string;
 	overflow: boolean;
+	model: string;
 }
