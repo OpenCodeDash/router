@@ -1,7 +1,9 @@
 import { FALLBACK_STATUSES } from "#c/fallback-statuses";
-import { FastifyReply } from "fastify";
+import { FastifyReply, FastifyRequest } from "fastify";
 import { Cron } from "croner";
 import type { UpstreamFailure } from "#t/upstream-failure";
+import { createHash, randomUUID } from "crypto";
+import { USER_AGENT } from "#c/user-agent";
 
 export function sendError(
 	reply: FastifyReply,
@@ -51,4 +53,32 @@ export function isValidCron(value: string) {
 	} catch {
 		return false;
 	}
+}
+
+export function resolveSessionId(
+	req: FastifyRequest,
+	body: Record<string, unknown> | undefined
+) {
+	const header = req.headers["x-opencode-session"];
+	if (typeof header === "string" && header) {
+		return header;
+	}
+
+	const messages = body?.messages;
+	if (!Array.isArray(messages) || !messages.length) {
+		return randomUUID();
+	}
+
+	return createHash("sha256")
+		.update(JSON.stringify(messages.slice(0, 2)))
+		.digest("hex")
+		.slice(0, 32);
+}
+
+export function buildUserAgent(req: FastifyRequest) {
+	const clientAgent = req.headers["user-agent"];
+	if (typeof clientAgent === "string" && clientAgent) {
+		return `${USER_AGENT} ${clientAgent}`;
+	}
+	return USER_AGENT;
 }

@@ -11,9 +11,11 @@ import Fastify, {
 import cors from "@fastify/cors";
 import { Readable } from "node:stream";
 import {
+	buildUserAgent,
 	isContextOverflow,
 	isPassthroughOnExhaustion,
 	OVERFLOW_CANDIDATE_STATUSES,
+	resolveSessionId,
 	sendError,
 	shouldFallback,
 	toModelObject,
@@ -196,6 +198,9 @@ export class Router {
 
 		let lastFailure: UpstreamFailure | undefined;
 
+		const sessionId = resolveSessionId(req, body);
+		const userAgent = buildUserAgent(req);
+
 		for (const modelId of route.models) {
 			const model = modelManager.getModel(modelId);
 			if (!model) {
@@ -211,6 +216,8 @@ export class Router {
 
 			const headers: Record<string, string> = {
 				"content-type": "application/json",
+				"x-opencode-session": sessionId,
+				"user-agent": userAgent,
 			};
 			if (model.apiKeyEnv) {
 				const apiKey = process.env[model.apiKeyEnv];
@@ -278,6 +285,11 @@ export class Router {
 
 			reply.status(upstream.status);
 			reply.header("content-type", contentType);
+			reply.header("x-router-model", modelId);
+			req.log.info(
+				{ route: alias, model: modelId, status: upstream.status },
+				"routed"
+			);
 
 			if (!upstream.body) {
 				return reply.send();
