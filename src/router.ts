@@ -141,15 +141,15 @@ export class Router {
 				)
 			);
 
-			app.post("/v1/responses", async (_req, reply) => {
-				return sendError(
+			app.post("/v1/responses", (req, reply) =>
+				this.proxy(
+					req,
 					reply,
-					501,
-					"The Responses API is not implemented",
-					"api_error",
-					"not_implemented"
-				);
-			});
+					"/responses",
+					options.routes,
+					options.modelManager
+				)
+			);
 
 			await app.listen({
 				port: options.port,

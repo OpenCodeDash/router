@@ -16,6 +16,10 @@ models:
     baseUrl: "https://opencode.ai/zen/go/v1"
     upstreamModel: GLM-5.2
     apiKeyEnv: "XXX"
+  gpt-5.6-luna:
+    baseUrl: "https://opencode.ai/zen/go/v1"
+    upstreamModel: "gpt-5.6-luna"
+    apiKeyEnv: "OPENCODE_GO_API_KEY"
 routes:
   main:
     models:
@@ -24,6 +28,9 @@ routes:
     models:
       - dumb
       - smart
+  gpt-5.6-luna:
+    models:
+      - gpt-5.6-luna
 timetable:
   - cron: 0 22 * * *
     event:

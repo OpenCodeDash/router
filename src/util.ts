@@ -55,6 +55,13 @@ export function isValidCron(value: string) {
 	}
 }
 
+function hashSessionSeed(seed: unknown) {
+	return createHash("sha256")
+		.update(JSON.stringify(seed))
+		.digest("hex")
+		.slice(0, 32);
+}
+
 export function resolveSessionId(
 	req: FastifyRequest,
 	body: Record<string, unknown> | undefined
@@ -65,14 +72,15 @@ export function resolveSessionId(
 	}
 
 	const messages = body?.messages;
-	if (!Array.isArray(messages) || !messages.length) {
-		return randomUUID();
+	if (Array.isArray(messages) && messages.length) {
+		return hashSessionSeed(messages.slice(0, 2));
 	}
 
-	return createHash("sha256")
-		.update(JSON.stringify(messages.slice(0, 2)))
-		.digest("hex")
-		.slice(0, 32);
+	if (body?.input !== undefined) {
+		return hashSessionSeed(body.input);
+	}
+
+	return randomUUID();
 }
 
 export function buildUserAgent(req: FastifyRequest) {
