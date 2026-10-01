@@ -1,0 +1,36 @@
+{
+	"compilerOptions": {
+		"rootDir": "./src",
+		"outDir": "./dist",
+
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
+		"target": "esnext",
+		"lib": ["esnext"],
+		"types": ["node"],
+
+		"rewriteRelativeImportExtensions": true,
+		"resolveJsonModule": true,
+		"verbatimModuleSyntax": false,
+		"isolatedModules": true,
+		"moduleDetection": "force",
+		"noUncheckedSideEffectImports": true,
+
+		"paths": {
+			"#c/*": ["./src/const/*.const.ts"],
+			"#t/*": ["./src/type/*.type.ts"],
+			"#s/*": ["./src/schema/*.schema.ts"]
+		},
+
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": false,
+
+		"jsx": "react-jsx",
+		"sourceMap": true,
+		"declaration": true,
+		"declarationMap": true,
+		"skipLibCheck": true
+	},
+	"include": ["src"]
+}
