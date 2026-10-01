@@ -1,6 +1,7 @@
 import { FALLBACK_STATUSES } from "#c/fallback-statuses";
 import { FastifyReply } from "fastify";
 import { Cron } from "croner";
+import type { UpstreamFailure } from "#t/upstream-failure";
 
 export function sendError(
 	reply: FastifyReply,
@@ -30,11 +31,17 @@ export function shouldFallback(status: number) {
 	);
 }
 
-// Only rate limits and server errors are safe to show the client once every
-// model has failed. A 401/403/404 from upstream is a router config problem,
-// and passing it through would tell the client their own key is wrong.
-export function isPassthroughOnExhaustion(status: number) {
-	return status === 429 || status >= 500;
+export const OVERFLOW_CANDIDATE_STATUSES = new Set([400, 413, 422]);
+
+const CONTEXT_OVERFLOW_PATTERN =
+	/context[ _]length|context size|context window|exceed_context_size|maximum context|prompt is too long|too many (input )?tokens|input is too long/i;
+
+export function isContextOverflow(errorBody: string) {
+	return CONTEXT_OVERFLOW_PATTERN.test(errorBody);
+}
+
+export function isPassthroughOnExhaustion(failure: UpstreamFailure) {
+	return failure.overflow || failure.status === 429 || failure.status >= 500;
 }
 
 export function isValidCron(value: string) {

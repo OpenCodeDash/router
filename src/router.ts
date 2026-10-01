@@ -11,7 +11,9 @@ import Fastify, {
 import cors from "@fastify/cors";
 import { Readable } from "node:stream";
 import {
+	isContextOverflow,
 	isPassthroughOnExhaustion,
+	OVERFLOW_CANDIDATE_STATUSES,
 	sendError,
 	shouldFallback,
 	toModelObject,
@@ -185,7 +187,6 @@ export class Router {
 			);
 		}
 
-		// One abort signal for the whole request, shared by every attempt
 		const clientAbort = new AbortController();
 		reply.raw.on("close", () => {
 			if (!reply.raw.writableFinished) {
@@ -235,6 +236,9 @@ export class Router {
 				continue;
 			}
 
+			const contentType =
+				upstream.headers.get("content-type") ?? "application/json";
+
 			if (shouldFallback(upstream.status)) {
 				const errorBody = await upstream.text().catch(() => "");
 				req.log.warn(
@@ -243,15 +247,35 @@ export class Router {
 				);
 				lastFailure = {
 					status: upstream.status,
-					contentType:
-						upstream.headers.get("content-type") ?? "application/json",
+					contentType,
 					body: errorBody,
+					overflow: false,
 				};
 				continue;
 			}
 
-			const contentType =
-				upstream.headers.get("content-type") ?? "application/json";
+			if (OVERFLOW_CANDIDATE_STATUSES.has(upstream.status)) {
+				const errorBody = await upstream.text().catch(() => "");
+
+				if (isContextOverflow(errorBody)) {
+					req.log.warn(
+						{ model: modelId, status: upstream.status },
+						"prompt exceeds model context, trying next model"
+					);
+					lastFailure = {
+						status: upstream.status,
+						contentType,
+						body: errorBody,
+						overflow: true,
+					};
+					continue;
+				}
+
+				reply.status(upstream.status);
+				reply.header("content-type", contentType);
+				return reply.send(errorBody);
+			}
+
 			reply.status(upstream.status);
 			reply.header("content-type", contentType);
 
@@ -270,7 +294,7 @@ export class Router {
 			);
 		}
 
-		if (lastFailure && isPassthroughOnExhaustion(lastFailure.status)) {
+		if (lastFailure && isPassthroughOnExhaustion(lastFailure)) {
 			reply.status(lastFailure.status);
 			reply.header("content-type", lastFailure.contentType);
 			return reply.send(lastFailure.body);
