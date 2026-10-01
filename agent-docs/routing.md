@@ -9,6 +9,7 @@ Server: Fastify in `src/router.ts`, 50 MB body limit, CORS `origin: true`.
 | Method | Path | Behavior |
 | ------ | ---- | -------- |
 | GET | `/health` | `{status:"ok"}`; no auth |
+| GET | `/metrics` | Prometheus metrics; no auth (see `./observability.md`) |
 | GET | `/v1/models` | Lists route aliases as OpenAI model objects |
 | GET | `/v1/models/:id` | One alias, or 404 `model_not_found` |
 | POST | `/v1/chat/completions` | Proxy (see flow) |

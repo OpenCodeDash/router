@@ -17,6 +17,7 @@ models, events, and the timetable.
 | Timetable | `src/timetable-manager.ts` | Croner jobs that fire events |
 | HTTP | `src/router.ts` | Fastify app, auth hook, OpenAI endpoints, proxy + fallback loop |
 | Helpers | `src/util.ts` | Error shape, fallback/overflow predicates, session/UA headers |
+| Metrics | `src/metrics.ts` | `prom-client` registry + metric definitions (`/metrics`) |
 | Constants | `src/const/` | Fallback statuses, user-agent, version |
 | Types | `src/type/` | `LoadedModel`, `UpstreamFailure` |
 

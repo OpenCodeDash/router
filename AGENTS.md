@@ -16,6 +16,7 @@ Fallback walks `route.models` in order and skips disabled models — see
 | Build / dev / run / typecheck | `./agent-docs/commands.md` |
 | Module boundaries and startup/request data flow | `./agent-docs/architecture.md` |
 | Adding a file, import aliases, code style | `./agent-docs/conventions.md` |
+| Prometheus metrics, dashboards, scrape config | `./agent-docs/observability.md` |
 
 Always true:
 - `config.yaml` is read from the process CWD at startup and is gitignored, so it must

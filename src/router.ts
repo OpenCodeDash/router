@@ -20,6 +20,23 @@ import {
 	shouldFallback,
 	toModelObject,
 } from "./util.ts";
+import {
+	authFailuresTotal,
+	contextOverflowTotal,
+	exhaustedTotal,
+	fallbacksTotal,
+	httpRequestDuration,
+	httpRequestsInProgress,
+	httpRequestsTotal,
+	passthroughTotal,
+	registry,
+	routeRequestsTotal,
+	upstreamDuration,
+	upstreamInFlight,
+	upstreamRequestsTotal,
+} from "./metrics.ts";
+
+const requestStartedAt = new WeakMap<FastifyRequest, bigint>();
 
 export class Router {
 	constructor(options: {
@@ -36,9 +53,38 @@ export class Router {
 		});
 
 		app.register(cors, { origin: true }).then(async () => {
+			app.addHook("onRequest", async (req) => {
+				requestStartedAt.set(req, process.hrtime.bigint());
+				httpRequestsInProgress.inc({ method: req.method });
+			});
+
+			app.addHook("onResponse", async (req, reply) => {
+				const startedAt = requestStartedAt.get(req);
+				if (startedAt === undefined) {
+					return;
+				}
+				requestStartedAt.delete(req);
+				httpRequestsInProgress.dec({ method: req.method });
+
+				const labels = {
+					method: req.method,
+					route: req.routeOptions.url ?? "unmatched",
+					status_code: String(reply.statusCode),
+				};
+				httpRequestsTotal.inc(labels);
+				httpRequestDuration.observe(
+					labels,
+					Number(process.hrtime.bigint() - startedAt) / 1e9
+				);
+			});
+
 			if (options.apiKeys.size) {
 				app.addHook("onRequest", async (req, reply) => {
-					if (req.method === "OPTIONS" || req.url === "/health") {
+					if (
+						req.method === "OPTIONS" ||
+						req.url === "/health" ||
+						req.url === "/metrics"
+					) {
 						return;
 					}
 
@@ -49,6 +95,7 @@ export class Router {
 					}
 
 					if (!options.apiKeys.has(token)) {
+						authFailuresTotal.inc();
 						return sendError(
 							reply,
 							401,
@@ -88,6 +135,11 @@ export class Router {
 
 			app.get("/health", async () => {
 				return { status: "ok" };
+			});
+
+			app.get("/metrics", async (_req, reply) => {
+				reply.header("content-type", registry.contentType);
+				return registry.metrics();
 			});
 
 			app.get("/v1/models", async () => {
@@ -226,6 +278,9 @@ export class Router {
 				}
 			}
 
+			const fetchStartedAt = process.hrtime.bigint();
+			upstreamInFlight.inc({ model: modelId });
+
 			let upstream: Response;
 			try {
 				upstream = await fetch(`${model.baseUrl}${path}`, {
@@ -235,19 +290,60 @@ export class Router {
 					signal: clientAbort.signal,
 				});
 			} catch (err) {
+				upstreamInFlight.dec({ model: modelId });
+				upstreamRequestsTotal.inc({
+					route: alias,
+					model: modelId,
+					status: "0",
+				});
+				upstreamDuration.observe(
+					{ route: alias, model: modelId },
+					Number(process.hrtime.bigint() - fetchStartedAt) / 1e9
+				);
 				if (clientAbort.signal.aborted) {
 					return reply;
 				}
+				fallbacksTotal.inc({
+					route: alias,
+					model: modelId,
+					reason: "network",
+				});
+				routeRequestsTotal.inc({
+					route: alias,
+					model: modelId,
+					outcome: "fallback",
+				});
 				req.log.warn(err, `model "${modelId}" unreachable, trying next`);
 				lastFailure = undefined;
 				continue;
 			}
+
+			upstreamInFlight.dec({ model: modelId });
+			upstreamRequestsTotal.inc({
+				route: alias,
+				model: modelId,
+				status: String(upstream.status),
+			});
+			upstreamDuration.observe(
+				{ route: alias, model: modelId },
+				Number(process.hrtime.bigint() - fetchStartedAt) / 1e9
+			);
 
 			const contentType =
 				upstream.headers.get("content-type") ?? "application/json";
 
 			if (shouldFallback(upstream.status)) {
 				const errorBody = await upstream.text().catch(() => "");
+				fallbacksTotal.inc({
+					route: alias,
+					model: modelId,
+					reason: "status",
+				});
+				routeRequestsTotal.inc({
+					route: alias,
+					model: modelId,
+					outcome: "fallback",
+				});
 				req.log.warn(
 					{ model: modelId, status: upstream.status },
 					"upstream failed, trying next model"
@@ -257,6 +353,7 @@ export class Router {
 					contentType,
 					body: errorBody,
 					overflow: false,
+					model: modelId,
 				};
 				continue;
 			}
@@ -265,6 +362,17 @@ export class Router {
 				const errorBody = await upstream.text().catch(() => "");
 
 				if (isContextOverflow(errorBody)) {
+					contextOverflowTotal.inc({ model: modelId });
+					fallbacksTotal.inc({
+						route: alias,
+						model: modelId,
+						reason: "overflow",
+					});
+					routeRequestsTotal.inc({
+						route: alias,
+						model: modelId,
+						outcome: "fallback",
+					});
 					req.log.warn(
 						{ model: modelId, status: upstream.status },
 						"prompt exceeds model context, trying next model"
@@ -274,6 +382,7 @@ export class Router {
 						contentType,
 						body: errorBody,
 						overflow: true,
+						model: modelId,
 					};
 					continue;
 				}
@@ -290,6 +399,11 @@ export class Router {
 				{ route: alias, model: modelId, status: upstream.status },
 				"routed"
 			);
+			routeRequestsTotal.inc({
+				route: alias,
+				model: modelId,
+				outcome: "success",
+			});
 
 			if (!upstream.body) {
 				return reply.send();
@@ -307,11 +421,17 @@ export class Router {
 		}
 
 		if (lastFailure && isPassthroughOnExhaustion(lastFailure)) {
+			passthroughTotal.inc({
+				route: alias,
+				model: lastFailure.model,
+				status: String(lastFailure.status),
+			});
 			reply.status(lastFailure.status);
 			reply.header("content-type", lastFailure.contentType);
 			return reply.send(lastFailure.body);
 		}
 
+		exhaustedTotal.inc({ route: alias });
 		return sendError(
 			reply,
 			502,
