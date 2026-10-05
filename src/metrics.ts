@@ -117,3 +117,10 @@ export const authFailuresTotal = new Counter({
 	help: "Rejected requests due to a missing or invalid router API key.",
 	registers: [registry],
 });
+
+export const sessionRouteLookupsTotal = new Counter({
+	name: "llmrouter_session_route_lookups_total",
+	help: "Session route lookups, by outcome (hit/miss).",
+	labelNames: ["outcome"] as const,
+	registers: [registry],
+});

@@ -13,6 +13,7 @@ models, events, and the timetable.
 | Entry / wiring | `src/main.ts` | Load env + config, construct managers, register crons, start Router |
 | Config | `src/config.ts`, `src/schema/` | Read and Zod-validate `config.yaml` |
 | Models | `src/model-manager.ts` | In-memory model registry + `enabled` flag |
+| Sessions | `src/route-tracker.ts` | Last routed upstream per opencode session (cost attribution) |
 | Events | `src/event-manager.ts` | Apply enable/disable-model events to ModelManager |
 | Timetable | `src/timetable-manager.ts` | Croner jobs that fire events |
 | HTTP | `src/router.ts` | Fastify app, auth hook, OpenAI endpoints, proxy + fallback loop |

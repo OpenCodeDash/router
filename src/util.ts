@@ -66,7 +66,11 @@ export function resolveSessionId(
 	req: FastifyRequest,
 	body: Record<string, unknown> | undefined
 ) {
-	const header = req.headers["x-opencode-session"];
+	// opencode always sends `x-opencode-session-id`; `x-opencode-session` is only
+	// sent for `opencode*` providers, so prefer the former.
+	const header =
+		req.headers["x-opencode-session-id"] ??
+		req.headers["x-opencode-session"];
 	if (typeof header === "string" && header) {
 		return header;
 	}
