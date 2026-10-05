@@ -1,4 +1,5 @@
 import { ModelManager } from "./model-manager.ts";
+import { RouteTracker } from "./route-tracker.ts";
 import { Route } from "./schema/route.schema.ts";
 
 import { UpstreamFailure } from "#t/upstream-failure";
@@ -31,6 +32,7 @@ import {
 	passthroughTotal,
 	registry,
 	routeRequestsTotal,
+	sessionRouteLookupsTotal,
 	upstreamDuration,
 	upstreamInFlight,
 	upstreamRequestsTotal,
@@ -39,14 +41,19 @@ import {
 const requestStartedAt = new WeakMap<FastifyRequest, bigint>();
 
 export class Router {
+	private readonly routeTracker: RouteTracker;
+
 	constructor(options: {
 		host: string;
 		port: number;
 		apiKeys: Set<string>;
 		routes: Record<string, Route>;
 		modelManager: ModelManager;
+		routeTracker?: RouteTracker;
 		hook?: (app: FastifyInstance) => void;
 	}) {
+		this.routeTracker = options.routeTracker ?? new RouteTracker();
+
 		const app = Fastify({
 			logger: true,
 			bodyLimit: 50 * 1024 * 1024,
@@ -83,7 +90,11 @@ export class Router {
 					if (
 						req.method === "OPTIONS" ||
 						req.url === "/health" ||
-						req.url === "/metrics"
+						req.url === "/metrics" ||
+						// Read-only, session-scoped lookup keyed by an opaque
+						// opencode session id; kept reachable without a key so
+						// plugins can query it alongside /metrics.
+						req.url.startsWith("/v1/sessions/")
 					) {
 						return;
 					}
@@ -162,6 +173,25 @@ export class Router {
 						);
 					}
 					return toModelObject(req.params.id);
+				}
+			);
+
+			app.get<{ Params: { sessionId: string } }>(
+				"/v1/sessions/:sessionId/route",
+				async (req, reply) => {
+					const record = this.routeTracker.get(req.params.sessionId);
+					if (!record) {
+						sessionRouteLookupsTotal.inc({ outcome: "miss" });
+						return sendError(
+							reply,
+							404,
+							`No route recorded for session \`${req.params.sessionId}\``,
+							"invalid_request_error",
+							"session_not_found"
+						);
+					}
+					sessionRouteLookupsTotal.inc({ outcome: "hit" });
+					return record;
 				}
 			);
 
@@ -395,6 +425,11 @@ export class Router {
 			reply.status(upstream.status);
 			reply.header("content-type", contentType);
 			reply.header("x-router-model", modelId);
+			this.routeTracker.record(sessionId, {
+				route: alias,
+				model: modelId,
+				upstreamModel: model.upstreamModel,
+			});
 			req.log.info(
 				{ route: alias, model: modelId, status: upstream.status },
 				"routed"

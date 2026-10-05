@@ -12,6 +12,7 @@ Server: Fastify in `src/router.ts`, 50 MB body limit, CORS `origin: true`.
 | GET | `/metrics` | Prometheus metrics; no auth (see `./observability.md`) |
 | GET | `/v1/models` | Lists route aliases as OpenAI model objects |
 | GET | `/v1/models/:id` | One alias, or 404 `model_not_found` |
+| GET | `/v1/sessions/:id/route` | Last upstream model routed for an opencode session, or 404 `session_not_found` |
 | POST | `/v1/chat/completions` | Proxy (see flow) |
 | POST | `/v1/completions` | Proxy |
 | POST | `/v1/embeddings` | Proxy |
@@ -23,7 +24,8 @@ Unknown paths → 404 `not_found`. All errors use the shape from `sendError` in
 ## Auth
 
 If `ROUTER_API_KEYS` is non-empty, an `onRequest` hook requires
-`Authorization: Bearer <key>`. Exempt: `OPTIONS` requests and `/health`. A
+`Authorization: Bearer <key>`. Exempt: `OPTIONS` requests, `/health`, `/metrics`, and
+`/v1/sessions/*` (read-only, session-scoped, keyed by an opaque session id). A
 missing/invalid key → 401 `invalid_api_key`. An empty key set disables auth (startup
 warns).
 
@@ -33,8 +35,9 @@ warns).
    `model_not_found`.
 2. Tie an `AbortController` to the client connection so a disconnect aborts upstream
    calls.
-3. Resolve `x-opencode-session`: the request header if present, else sha256 of the
-   first 2 messages, else a random UUID (`resolveSessionId`).
+3. Resolve the session id (`resolveSessionId`): prefer `x-opencode-session-id`
+   (opencode always sends it), then `x-opencode-session` (only `opencode*` providers),
+   else sha256 of the first 2 messages, else a random UUID.
 4. Build the upstream UA: `llm-router/<version> <client user-agent>`.
 Request bodies are forwarded **verbatim** except `model`, which is replaced with
 `model.upstreamModel`. There is no chat↔responses translation: a route used via
@@ -47,8 +50,9 @@ client must send a Responses-format body.
      and `Authorization` from `model.apiKeyEnv` when set;
    - network error → try next (an aborted client request returns immediately);
    - classify the response with the table below;
-   - on success: set `x-router-model`, log `routed`, and stream the body. SSE responses
-     also get `no-cache`, `keep-alive`, `x-accel-buffering: no`.
+   - on success: record the chosen model for the session (`RouteTracker`, exposed via
+     `GET /v1/sessions/:id/route`), set `x-router-model`, log `routed`, and stream the
+     body. SSE responses also get `no-cache`, `keep-alive`, `x-accel-buffering: no`.
 6. If no model succeeded, apply the exhaustion rule.
 
 ## Fallback decision
@@ -76,3 +80,13 @@ fallback failure is not passed through and the request ends as a 502.
 `disable-model` / `enable-model` timetable events (see `./configuration.md`) flip
 `enabled` on `ModelManager`. Disabled models are skipped in the loop — they stay in the
 route definition.
+
+## Session route lookup
+
+`RouteTracker` (`src/route-tracker.ts`) remembers, per opencode session id, the last
+model that successfully served a request (`route`, config `model`, `upstreamModel`),
+with a 15-minute TTL and a 5000-entry cap, evicting oldest-first. `GET
+/v1/sessions/:id/route` returns that record or 404 `session_not_found`. Clients use it
+to attribute cost after a fallback: opencode prices the alias it requested, not the
+upstream that actually answered. State is in-memory only — a restart clears it. Lookups
+are counted in `llmrouter_session_route_lookups_total{outcome}`.
