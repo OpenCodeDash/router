@@ -66,9 +66,13 @@ export function resolveSessionId(
 	req: FastifyRequest,
 	body: Record<string, unknown> | undefined
 ) {
-	// opencode always sends `x-opencode-session-id`; `x-opencode-session` is only
-	// sent for `opencode*` providers, so prefer the former.
+	// opencode 1.18.x sends the session id under different headers depending on
+	// the provider: `x-session-id` / `x-session-affinity` for custom providers
+	// (e.g. "router"), and `x-opencode-session` for `opencode*` providers. Newer
+	// builds also send `x-opencode-session-id`. Prefer whichever is present.
 	const header =
+		req.headers["x-session-id"] ??
+		req.headers["x-session-affinity"] ??
 		req.headers["x-opencode-session-id"] ??
 		req.headers["x-opencode-session"];
 	if (typeof header === "string" && header) {

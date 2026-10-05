@@ -35,9 +35,10 @@ warns).
    `model_not_found`.
 2. Tie an `AbortController` to the client connection so a disconnect aborts upstream
    calls.
-3. Resolve the session id (`resolveSessionId`): prefer `x-opencode-session-id`
-   (opencode always sends it), then `x-opencode-session` (only `opencode*` providers),
-   else sha256 of the first 2 messages, else a random UUID.
+3. Resolve the session id (`resolveSessionId`): prefer `x-session-id` /
+   `x-session-affinity` (custom providers like `router`), then `x-opencode-session-id`
+   / `x-opencode-session` (`opencode*` providers), else sha256 of the first 2
+   messages, else a random UUID.
 4. Build the upstream UA: `llm-router/<version> <client user-agent>`.
 Request bodies are forwarded **verbatim** except `model`, which is replaced with
 `model.upstreamModel`. There is no chat↔responses translation: a route used via
