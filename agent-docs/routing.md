@@ -37,9 +37,11 @@ warns).
    first 2 messages, else a random UUID (`resolveSessionId`).
 4. Build the upstream UA: `llm-router/<version> <client user-agent>`.
 Request bodies are forwarded **verbatim** except `model`, which is replaced with
-`model.upstreamModel`. There is no chat↔responses translation: a route used via
-`/v1/responses` must list only upstream models that speak the Responses API, and the
-client must send a Responses-format body.
+`model.upstreamModel`, and DeepSeek reasoning-mode requests, where a missing
+`reasoning_content` is added to replayed assistant messages (see `addReasoningContent`
+in `src/util.ts`; controlled by the model's `reasoningContent` setting). There is no
+chat↔responses translation: a route used via `/v1/responses` must list only upstream
+models that speak the Responses API, and the client must send a Responses-format body.
 
 5. For each id in `route.models`, **in order**:
    - skip if unknown (logged) or `enabled === false`;
