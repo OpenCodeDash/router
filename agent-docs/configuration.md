@@ -22,6 +22,7 @@ error). See `README.md` for a full example.
 | `baseUrl` | URL | Base for the OpenAI-compatible upstream (e.g. `…/v1`) |
 | `upstreamModel` | string | Model name sent upstream |
 | `apiKeyEnv` | string (optional) | Env var holding the upstream bearer token |
+| `reasoningContent` | `auto` \| `always` \| `never` (optional, default `auto`) | Add `reasoning_content` to replayed assistant messages. `auto` does it when `upstreamModel` contains `deepseek` (their thinking mode rejects requests without it); `always`/`never` override. |
 
 `Route` (`src/schema/route.schema.ts`): `models: string[]` (non-empty) — upstream model
 ids tried in order.

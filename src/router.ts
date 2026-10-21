@@ -12,6 +12,7 @@ import Fastify, {
 import cors from "@fastify/cors";
 import { Readable } from "node:stream";
 import {
+	addReasoningContent,
 	buildUserAgent,
 	isContextOverflow,
 	isPassthroughOnExhaustion,
@@ -308,6 +309,8 @@ export class Router {
 				}
 			}
 
+			const upstreamBody = addReasoningContent(body ?? {}, model);
+
 			const fetchStartedAt = process.hrtime.bigint();
 			upstreamInFlight.inc({ model: modelId });
 
@@ -316,7 +319,7 @@ export class Router {
 				upstream = await fetch(`${model.baseUrl}${path}`, {
 					method: "POST",
 					headers,
-					body: JSON.stringify({ ...body, model: model.upstreamModel }),
+					body: JSON.stringify({ ...upstreamBody, model: model.upstreamModel }),
 					signal: clientAbort.signal,
 				});
 			} catch (err) {

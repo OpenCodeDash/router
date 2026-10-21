@@ -2,6 +2,7 @@ import { FALLBACK_STATUSES } from "#c/fallback-statuses";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { Cron } from "croner";
 import type { UpstreamFailure } from "#t/upstream-failure";
+import type { Model } from "#s/model";
 import { createHash, randomUUID } from "crypto";
 import { USER_AGENT } from "#c/user-agent";
 
@@ -24,6 +25,58 @@ export function toModelObject(id: string) {
 		created: 0,
 		owned_by: "router",
 	};
+}
+
+export function needsReasoningContent(
+	model: Pick<Model, "upstreamModel" | "reasoningContent">
+) {
+	if (model.reasoningContent === "always") {
+		return true;
+	}
+	if (model.reasoningContent === "never") {
+		return false;
+	}
+	return /deepseek/i.test(model.upstreamModel);
+}
+
+/**
+ * DeepSeek thinking mode requires every replayed assistant message to carry a
+ * `reasoning_content` field, even when it's empty. OpenAI client libraries drop
+ * the field because it isn't part of the chat schema, so restore it before
+ * forwarding the request.
+ */
+export function addReasoningContent(
+	body: Record<string, unknown>,
+	model: Pick<Model, "upstreamModel" | "reasoningContent">
+) {
+	if (!needsReasoningContent(model)) {
+		return body;
+	}
+
+	const messages = body.messages;
+	if (!Array.isArray(messages)) {
+		return body;
+	}
+
+	let changed = false;
+	const next = messages.map((message: unknown) => {
+		if (typeof message !== "object" || message === null || Array.isArray(message)) {
+			return message;
+		}
+		const assistant = message as Record<string, unknown>;
+		if (
+			assistant.role !== "assistant" ||
+			typeof assistant.reasoning_content === "string"
+		) {
+			return message;
+		}
+		changed = true;
+		const reasoning =
+			typeof assistant.reasoning === "string" ? assistant.reasoning : "";
+		return { ...assistant, reasoning_content: reasoning };
+	});
+
+	return changed ? { ...body, messages: next } : body;
 }
 
 export function shouldFallback(status: number) {
